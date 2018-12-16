@@ -6,16 +6,12 @@ import re
 import time
 
 FILE = sys.argv[1]
-FOLLOW = 5
 INITIAL_HP = 200
 ATTACK_POWER = 3
+ATTACK_POWER_ELF = int(sys.argv[2])
 
 grid = []
-with open(FILE) as f:
 
-    for line in f:
-        if len(line)>1:
-            grid.append(list(line[:-1]))
 
 
 def dumpGridPath(grid):
@@ -109,6 +105,29 @@ def next_path(grid,dist,xTo,yTo,xFrom,yFrom):
         return next_path(grid,dist-1,xTo,yTo+1,xFrom,yFrom)
     print "Couldn't find next step!!"
     exit(1)
+    
+
+def pathOK(grid,curDist,xTo,yTo,xFrom,yFrom):
+    #print "Checking (%s,%s) from (%s,%s) with dist %s" % (xTo,yTo,xFrom,yFrom,curDist)
+    # destination found
+    if abs_dist(xTo,yTo,xFrom,yFrom) == 1:
+        return True
+    # check UP
+    found = False
+    c = grid[yFrom-1][xFrom]
+    if not found and c.isdigit() and int(c) == curDist+1:
+        found = pathOK(grid,curDist+1,xTo,yTo,xFrom,yFrom-1)
+    c = grid[yFrom][xFrom-1]
+    if not found and c.isdigit() and int(c) == curDist+1:
+        found = pathOK(grid,curDist+1,xTo,yTo,xFrom-1,yFrom)
+    c = grid[yFrom][xFrom+1]
+    if not found and c.isdigit() and int(c) == curDist+1:
+        found = pathOK(grid,curDist+1,xTo,yTo,xFrom+1,yFrom)
+    c = grid[yFrom+1][xFrom]
+    if not found and c.isdigit() and int(c) == curDist+1:
+        found = pathOK(grid,curDist+1,xTo,yTo,xFrom,yFrom+1)
+    return found
+
 
 def find_shortest_path(grid,u):
     # check that unit is not dead
@@ -130,12 +149,23 @@ def find_shortest_path(grid,u):
                 if grid[y][x] in ('E','G') and grid[y][x] != u['type']:
                     dist = compute_dist(grid,u,x,y)
                     if dist == curDist:
+                        #nextPath = next_path(grid,dist-1,x,y,u['x'],u['y'])
+                        #print "Search path for unit %s" % u
                         # check paths (in order)
-                        nextPath = next_path(grid,dist-1,x,y,u['x'],u['y'])
-                        # find path recursively
-                        #if u['#']==FOLLOW and u['type']=='E':
-                        #    dumpGridPath(grid)
-                        return nextPath
+                        c = grid[u['y']-1][u['x']]
+                        if c.isdigit() and pathOK(grid,1,x,y,u['x'],u['y']-1):
+                            return {'x':u['x'],'y':u['y']-1}
+                        c = grid[u['y']][u['x']-1]
+                        if c.isdigit() and pathOK(grid,1,x,y,u['x']-1,u['y']):
+                            return {'x':u['x']-1,'y':u['y']}
+                        c = grid[u['y']][u['x']+1]
+                        if c.isdigit() and pathOK(grid,1,x,y,u['x']+1,u['y']):
+                            return {'x':u['x']+1,'y':u['y']}
+                        c = grid[u['y']+1][u['x']]
+                        if c.isdigit() and pathOK(grid,1,x,y,u['x'],u['y']+1):
+                            return {'x':u['x'],'y':u['y']+1}
+                        print "Error during next path!!!"
+                        exit(1)
                         
                 if grid[y][x] == '.':
                     dist = compute_dist(grid,u,x,y)
@@ -173,7 +203,7 @@ def tick(grid,units):
             if e['type'] != u['type'] and e['HP'] > 0:
                 hasEnnemies = True
         if not hasEnnemies:
-            print "No ennemy found for %s" % u
+            #print "No ennemy found for %s" % u
             return True
         # skip dead unit
         if u['HP']<=0:
@@ -208,32 +238,46 @@ def tick(grid,units):
             noAction=False
     
     return False
-            
+
+
+def initiate(grid,units,gob_AP,elf_AP):
+    # read file
+    with open(FILE) as f:
+        for line in f:
+            if len(line)>1:
+                grid.append(list(line[:-1]))
+    
+    # initiate units
+    elfIdx = 0
+    gobIdx = 0
+    for y in range(len(grid)):
+        line = grid[y]
+        for x in range(len(line)):
+            char = line[x]
+            if char == 'E':
+                elfIdx+=1
+                units.append({'#':elfIdx,'x':x,'y':y,'type':char,'HP':INITIAL_HP,'AP':elf_AP})
+            elif char == 'G':
+                gobIdx+=1
+                units.append({'#':gobIdx,'x':x,'y':y,'type':char,'HP':INITIAL_HP,'AP':gob_AP})
+            grid[y]=line
+
+
+
+
 
 # initiate units
 units = []
-elfIdx = 0
-gobIdx = 0
-for y in range(len(grid)):
-    line = grid[y]
-    for x in range(len(line)):
-        char = line[x]
-        if char == 'E':
-            elfIdx+=1
-            units.append({'#':elfIdx,'x':x,'y':y,'type':char,'HP':INITIAL_HP,'AP':ATTACK_POWER})
-        elif char == 'G':
-            gobIdx+=1
-            units.append({'#':gobIdx,'x':x,'y':y,'type':char,'HP':INITIAL_HP,'AP':ATTACK_POWER})
-        grid[y]=line
+initiate(grid,units,ATTACK_POWER,ATTACK_POWER_ELF)
 
-print "Initial state:"
-dumpGrid(grid,units)
+print "Initial state with AP (%s,%s):" % (ATTACK_POWER,ATTACK_POWER_ELF)
+#dumpGrid(grid,units)
 
 rounds = 1
 finished = False
 while not finished:
     finished = tick(grid,units)
-    if finished or True:
+    if False:
         #time.sleep(.5)
         print ""
         print "AFTER ROUND #%s" % rounds
@@ -242,13 +286,15 @@ while not finished:
         #dumpUnits(units)
     if finished:
         break
-    rounds+=1
-    
+    rounds+=1    
 
 # compute result
 totalHP = 0
+totalDeadElves = 0
 for u in units:
     if u['HP']>0:
         totalHP+=u['HP']
+    elif u['type']=='E':
+        totalDeadElves+=1
 
-print "Finished during round %s with total HP %s. Result is then: %s" % (rounds-1,totalHP,(rounds-1)*totalHP)
+print "Finished during round %s with total HP %s (#%s Elves died). Result is then: %s" % (rounds-1,totalHP,totalDeadElves,(rounds-1)*totalHP)
